@@ -4,15 +4,17 @@ using UnityEngine;
 
 public class PlayerMovementF2 : MonoBehaviour
 {
+    [Header("Movement")]
     [SerializeField] float moveSpeed;
-    //[SerializeField] float _maxMoveSpeed = 5f;
     [SerializeField] float _mouseSensitivity = 1f;
     [SerializeField] float _mouseSpeed = 1f;
     [SerializeField] float groundDrag = 10f;
     [SerializeField] float groundBufferTime = 0.1f;
     [SerializeField] float airMultiplier = 1.5f;
     [SerializeField] float _jumpForce;
-
+    [SerializeField] float coyoteTimeDuration = 0.2f;
+    
+    [Header("Dash")]
     [SerializeField] float dashForce = 20f; // Strength of the dash
     [SerializeField] float dashCooldown = 1f; // Cooldown between dashes
     [SerializeField] float dashDuration = 0.2f;
@@ -28,12 +30,16 @@ public class PlayerMovementF2 : MonoBehaviour
     [SerializeField] float rotationSpeed = 5f;
     [SerializeField] float gravityRaycastDistance = 1.5f;
     Vector3 customGravityDirection = Vector3.down;
+    public bool freeze;
+    public bool activeGrapple;
     bool isJumping = false;
     bool isGrounded;
+    bool isOnAPlanet;
     private float lastGroundedTime;
     private Coroutine resetGravityCoroutine;
     private bool isDashing = false;
     private float lastDashTime;
+    private float coyoteTimeCounter;
 
     private void Start()
     {
@@ -48,14 +54,20 @@ public class PlayerMovementF2 : MonoBehaviour
 
     private void Update()
     {
+        if(freeze)
+        {
+            _rb.velocity = Vector3.zero;
+        }
+
         Debug.Log(isGrounded);
         ClampMaxVelocity();
         HandleCameraMovement();
+        HandleCoyoteTime();
         HandleJump();
         //HandleDash();
         DetectGravityDirection();
 
-        if (isGrounded && !isJumping)
+        if (isGrounded && !isJumping && !activeGrapple)
             _rb.drag = groundDrag;
         else
             _rb.drag = 0;
@@ -63,11 +75,18 @@ public class PlayerMovementF2 : MonoBehaviour
 
     private void FixedUpdate()
     {
-        //Apply custom gravity
-        if (!isDashing)
+        if (activeGrapple)
         {
-            // Apply custom gravity only if not dashing
             _rb.AddForce(customGravityDirection * gravityStrength, ForceMode.Acceleration);
+        }
+        else if (!isDashing && !isOnAPlanet)
+        {
+            _rb.AddForce(customGravityDirection * gravityStrength, ForceMode.Acceleration);
+        }
+        else if(!isDashing && isOnAPlanet && !isJumping)
+        {
+            Debug.Log("isworking");
+            _rb.AddForce(customGravityDirection * gravityStrength * 2.5f, ForceMode.Acceleration);
         }
 
         HandleMovement();
@@ -76,6 +95,8 @@ public class PlayerMovementF2 : MonoBehaviour
 
     void HandleMovement()
     {
+        if(activeGrapple) return;
+
         //Vector2 playerMovementControls = InputManager.Instance.GetPlayerMovement();
 
         //float moveX = playerMovementControls.x;
@@ -151,6 +172,16 @@ public class PlayerMovementF2 : MonoBehaviour
         _playerCamera.transform.localEulerAngles = Vector3.right * _verticalLookRotation;
     }
 
+    void HandleCoyoteTime()
+    {
+        if (isGrounded)
+        {
+            coyoteTimeCounter = coyoteTimeDuration;
+        } else {
+            coyoteTimeCounter -= Time.deltaTime;
+        }
+    }
+
     void HandleJump()
     {
         bool wasGrounded = isGrounded;
@@ -158,31 +189,19 @@ public class PlayerMovementF2 : MonoBehaviour
         if (isGrounded)
             lastGroundedTime = Time.time;
         
-        bool canJump = (Time.time - lastGroundedTime) <= groundBufferTime;
-
-        if (Physics.Raycast(transform.position, customGravityDirection, out RaycastHit hit, 1.3f))
+        //bool canJump = (Time.time - lastGroundedTime) <= groundBufferTime;
+        if(!isJumping && Input.GetKeyDown(KeyCode.Space) && coyoteTimeCounter > 0f)
         {
-            if (hit.collider.CompareTag("GravityPlatform") && !isJumping && canJump)
-            {
-                isGrounded = true;
-
-                if(Input.GetKeyDown(KeyCode.Space))
-                {
-                    isGrounded = false;
-                    isJumping = true;
-                    _rb.velocity = new Vector3(_rb.velocity.x, 0f, _rb.velocity.z);
-                    _rb.AddForce(-customGravityDirection * _jumpForce, ForceMode.Impulse);
-                    StartCoroutine(ResetJumpState());
-                }
-            }
+            //isGrounded = false;
+            isJumping = true;
+            isOnAPlanet = false;
+            _rb.velocity = new Vector3(_rb.velocity.x, 0f, _rb.velocity.z);
+            if(isGrounded)
+                _rb.AddForce(-customGravityDirection * _jumpForce, ForceMode.Impulse);
             else
-            {
-                isGrounded = false;
-            }
-        }
-        else
-        {
-            isGrounded = false;
+                _rb.AddForce(-customGravityDirection * _jumpForce * 0.75f, ForceMode.Impulse);
+            coyoteTimeCounter = 0f;
+            StartCoroutine(ResetJumpState());
         }
     }
 
@@ -194,6 +213,8 @@ public class PlayerMovementF2 : MonoBehaviour
 
     void ClampMaxVelocity()
     {
+        if(activeGrapple) return;
+
         //Vector3 currentVelocity = _rb.velocity;
         // if (currentVelocity.magnitude > maxVelocity)
         // {
@@ -204,6 +225,16 @@ public class PlayerMovementF2 : MonoBehaviour
             // Smoothly reduce velocity instead of hard clamping
         //    _rb.velocity = Vector3.ClampMagnitude(currentVelocity, maxVelocity);
         //}
+        
+        Vector3 yVelocity = new Vector3(0f, _rb.velocity.y, 0f);
+
+        //limit velocity upwards if needed (not downwards)
+        if(_rb.velocity.y > 0f && yVelocity.magnitude > moveSpeed)
+        {
+            Vector3 limitedVel = yVelocity.normalized * moveSpeed;
+            _rb.velocity = new Vector3(_rb.velocity.x, limitedVel.y, _rb.velocity.z);
+        }
+
         Vector3 flatVel = new Vector3(_rb.velocity.x, 0f, _rb.velocity.z);
 
         //limit velocity if needed
@@ -213,7 +244,6 @@ public class PlayerMovementF2 : MonoBehaviour
             _rb.velocity = new Vector3(limitedVel.x, _rb.velocity.y, limitedVel.z);
         }
     }
-
 
     void AlignCharacterToGravity()
     {
@@ -245,7 +275,10 @@ public class PlayerMovementF2 : MonoBehaviour
         {
             if (Physics.Raycast(transform.position, direction, out RaycastHit hit, gravityRaycastDistance))
             {
-                if (hit.collider.CompareTag("GravityPlatform"))
+                float groundDistance = Vector3.Distance(transform.position, hit.point);
+                float groundedThreshold = 1.2f; // Tweak as necessary
+
+                if (groundDistance <= groundedThreshold && (hit.collider.CompareTag("GravityPlatform") || hit.collider.CompareTag("Planet")) && !GetComponent<Grappling>().grappling)
                 {
                     // Set gravity direction based on the hit normal
                     customGravityDirection = -hit.normal;
@@ -272,9 +305,6 @@ public class PlayerMovementF2 : MonoBehaviour
                 resetGravityCoroutine = StartCoroutine(ResetGravityAfterDelay(0.5f));
             }
         }
-
-        // If no platform is detected, default to downward gravity
-        //customGravityDirection = Vector3.down;
     }
 
     private IEnumerator ResetGravityAfterDelay(float delay)
@@ -284,14 +314,58 @@ public class PlayerMovementF2 : MonoBehaviour
         resetGravityCoroutine = null; // Clear the reference once done
     }
 
-    // private void OnCollisionExit(Collision other)
-    // {
-    //     // If leaving a gravity platform, reset to global downward gravity
-    //     if (other.gameObject.CompareTag("GravityPlatform"))
-    //     {
-    //         customGravityDirection = Vector3.down;
-    //     }
-    // }
+    public void ResetGravityNow()
+    {
+        customGravityDirection = Vector3.down;
+    }
+
+    private bool enableMovementOnNextTouch;
+    public void JumpToPosition(Vector3 targetPosition, float trajectoryHeight)
+    {
+        activeGrapple = true;
+        velocityToSet = CalculateJumpVelocity(transform.position, targetPosition, trajectoryHeight);
+        Invoke(nameof(SetVelocity), 0.1f);
+    }
+
+    private Vector3 velocityToSet;
+    private void SetVelocity()
+    {
+        enableMovementOnNextTouch = true;
+        _rb.velocity = velocityToSet;
+    }
+
+    public void ResetRestrictions()
+    {
+        activeGrapple = false;
+    }
+
+    private void OnCollisionEnter(Collision collision)
+    {
+        if(collision.gameObject.tag == "Planet")
+        {
+            isOnAPlanet = true;
+        }
+
+        if(enableMovementOnNextTouch)
+        {
+            enableMovementOnNextTouch = false;
+            ResetRestrictions();
+            GetComponent<Grappling>().StopGrapple();
+        }
+    }
+
+    public Vector3 CalculateJumpVelocity(Vector3 startPoint, Vector3 endPoint, float trajectoryHeight)
+    {
+        float gravity = Physics.gravity.y;
+        float displacementY = endPoint.y - startPoint.y;
+        Vector3 displacementXZ = new Vector3(endPoint.x - startPoint.x, 0f, endPoint.z - startPoint.z);
+
+        Vector3 velocityY = Vector3.up * Mathf.Sqrt(-2 * gravity * trajectoryHeight);
+        Vector3 velocityXZ = displacementXZ / (Mathf.Sqrt(-2 * trajectoryHeight / gravity)
+            + Mathf.Sqrt(2 * (displacementY - trajectoryHeight) / gravity));
+        
+        return velocityXZ + velocityY;
+    }
 
     private void OnDrawGizmos()
     {
