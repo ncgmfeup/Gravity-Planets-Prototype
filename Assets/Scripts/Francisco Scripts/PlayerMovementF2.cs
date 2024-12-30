@@ -59,7 +59,7 @@ public class PlayerMovementF2 : MonoBehaviour
             _rb.velocity = Vector3.zero;
         }
 
-        Debug.Log(isGrounded);
+        //Debug.Log(isGrounded);
         ClampMaxVelocity();
         HandleCameraMovement();
         HandleCoyoteTime();
@@ -85,7 +85,6 @@ public class PlayerMovementF2 : MonoBehaviour
         }
         else if(!isDashing && isOnAPlanet && !isJumping)
         {
-            Debug.Log("isworking");
             _rb.AddForce(customGravityDirection * gravityStrength * 2.5f, ForceMode.Acceleration);
         }
 
@@ -237,11 +236,17 @@ public class PlayerMovementF2 : MonoBehaviour
 
         Vector3 flatVel = new Vector3(_rb.velocity.x, 0f, _rb.velocity.z);
 
-        //limit velocity if needed
         if(flatVel.magnitude > moveSpeed)
         {
-            Vector3 limitedVel = flatVel.normalized * moveSpeed;
-            _rb.velocity = new Vector3(limitedVel.x, _rb.velocity.y, limitedVel.z);
+            if(!isGrounded)
+            {
+                Vector3 limitedVel = flatVel.normalized * moveSpeed * 0.5f;
+                _rb.velocity = new Vector3(limitedVel.x, _rb.velocity.y, limitedVel.z);
+                Debug.Log("isWorking");
+            } else {
+                Vector3 limitedVel = flatVel.normalized * moveSpeed;
+                _rb.velocity = new Vector3(limitedVel.x, _rb.velocity.y, limitedVel.z);
+            }
         }
     }
 

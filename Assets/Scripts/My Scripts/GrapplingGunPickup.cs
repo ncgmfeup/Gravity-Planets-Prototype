@@ -54,6 +54,7 @@ public class GrapplingGunPickup : MonoBehaviour
 
         gun.SetParent(gunHoldPoint);
         gun.gameObject.GetComponent<BoxCollider>().enabled = false;
+        gun.gameObject.GetComponent<LineRenderer>().enabled = true;
 
         gun.localPosition = Vector3.zero;
         gun.localRotation = Quaternion.identity;
